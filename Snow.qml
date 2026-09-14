@@ -85,6 +85,7 @@ Item {
                 const values = JSON.parse(json)
                 if (!values || typeof values !== "object" || Array.isArray(values)) return "expected a JSON object"
                 const next = Object.assign({}, root.settings)
+                let changed = false
                 const ranges = {flakes: [0, 2000], windowDepth: [0, 150], groundDepth: [0, 250], pixelSize: [1, 4]}
                 for (const key of Object.keys(values)) {
                     if (["flakes", "wind", "windowDepth", "groundDepth", "hideOnFullscreen", "pixelSize"].indexOf(key) < 0)
@@ -94,8 +95,12 @@ Item {
                         if (typeof value !== "number" || !Number.isInteger(value) || value < range[0] || value > range[1])
                             return key + " must be an integer from " + range[0] + " to " + range[1]
                     } else if (typeof values[key] !== "boolean") return key + " must be true or false"
+                    if (values[key] !== root.settings[key]) changed = true
                     next[key] = values[key]
                 }
+                // The host returns false for unchanged settings as well as a
+                // failed write. A validated no-op is already successful.
+                if (!changed) return "ok"
                 if (root.shell && !root.shell.updateEntryInline(root.pluginId, next)) return "could not save settings"
                 root.settings = next
                 return "ok"

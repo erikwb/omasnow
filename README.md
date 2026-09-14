@@ -4,7 +4,7 @@ Xsnow's vintage pixel snow for Omarchy and Hyprland. Real Xsnow bitmap flakes
 drift behind windows, collect on exposed window tops, and build up along the
 bottom of each screen. Mouse clicks and keyboard input pass through the snow.
 
-![Omasnow snowflakes drifting across the desktop and collecting on window tops](screenshot.png)
+![Omasnow snowflakes drifting across the desktop and collecting on window tops](preview.png)
 
 The seven vintage masks come from [Wsnow 0.92](https://sourceforge.net/projects/wsnow/files/),
 Willem Vermin's MIT-licensed browser version. Their pixel shapes exactly match
@@ -85,6 +85,13 @@ so the snowfall does not gradually slow down. Flakes continue travelling
 behind windows, including translucent ones. The `status` command reports
 `meanFallSpeed` in snow pixels per second.
 
+The default bank depths follow classic [Xsnow 1.42](https://sources.debian.org/src/xsnow/1%3A1.42-6/): 15 pixels on windows and
+50 at the screen bottom. Omasnow caps its bitmap banks at those depths and
+keeps replacing landed flakes after a bank fills. Banks do not melt or blow
+away; wind affects falling flakes only. Its recycling is an adaptation:
+classic Xsnow leaves an imprint while the particle continues falling, whereas
+Omasnow respawns it on landing and preserves its falling speed.
+
 ## Remove
 
 ```sh
@@ -134,7 +141,7 @@ versions retain cached QML even after `rescanPlugins`.
 ```sh
 omarchy plugin validate .
 python3 -m unittest discover -s tests -v
-node --test tests/engine.test.cjs
+node --test tests/*.test.cjs
 QT_QPA_PLATFORM=offscreen QT_QUICK_BACKEND=software /usr/lib/qt6/bin/qmltestrunner -input tests/tst_bank.qml
 python3 geometry.py --once
 python3 tools/build_flakes.py
