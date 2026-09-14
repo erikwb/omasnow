@@ -4,6 +4,8 @@ Xsnow's vintage pixel snow for Omarchy and Hyprland. Real Xsnow bitmap flakes
 drift behind windows, collect on exposed window tops, and build up along the
 bottom of each screen. Mouse clicks and keyboard input pass through the snow.
 
+![Omasnow snowflakes drifting across the desktop and collecting on window tops](screenshot.png)
+
 The seven vintage masks come from [Wsnow 0.92](https://sourceforge.net/projects/wsnow/files/),
 Willem Vermin's MIT-licensed browser version. Their pixel shapes exactly match
 the vintage Xsnow flakes.
