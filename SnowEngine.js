@@ -1,0 +1,158 @@
+.import "Flakes.js" as Flakes
+
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 Erik Bourget
+// Vintage Xsnow movement parameters and bitmap snow deposits.
+// Simulation runs in physical pixels at the original 50 ms cadence. The host
+// translates to logical Wayland coordinates only when displaying the result.
+function randomInt(n) { return Math.floor(Math.random() * Math.max(1, n)); }
+function clamp(n, low, high) { return Math.max(low, Math.min(high, n)); }
+
+function spawn(state, flake) {
+    flake.type = randomInt(7);
+    flake.x = randomInt(state.width - Flakes.masks[flake.type][0].length);
+    flake.y = randomInt(state.height / 10);
+    if (state.wind) {
+        flake.x = state.direction > 0 ? randomInt(state.width / 3)
+                                    : state.width - randomInt(state.width / 3);
+        flake.y = randomInt(state.height);
+    }
+    // Keep the pool's speed mix steady across landings and screen exits.
+    // Rerolling here replaces fast flakes more often, gradually filling the
+    // pool with slow flakes and making sustained snowfall peter out.
+    if (flake.dy === undefined) flake.dy = randomInt(11) + 1;
+    flake.dx = randomInt(Math.floor(flake.dy / 4) + 1) * (Math.random() > 0.5 ? 1 : -1);
+    return flake;
+}
+
+function create(width, height, count) {
+    const state = {width: width, height: height, flakes: [], piles: [], windows: [],
+                   wind: 0, windClock: 600, direction: 1, dirty: true};
+    for (let i = 0; i < count; ++i) state.flakes.push(spawn(state, {}));
+    return state;
+}
+
+function makePile(surface, depth) {
+    const width = Math.max(1, Math.round(surface.width));
+    return {id: surface.id, x: Math.round(surface.x), y: Math.round(surface.y),
+            width: width, depth: depth, pixels: new Uint8Array(width * depth),
+            heights: new Uint16Array(width), ground: surface.ground === true, revision: 0};
+}
+
+function stamp(pile, type, left, top) {
+    const mask = Flakes.masks[type];
+    let changed = false;
+    for (let y = 0; y < mask.length; ++y) {
+        const py = Math.round(top) + y;
+        if (py < 0 || py >= pile.depth) continue;
+        for (let x = 0; x < mask[y].length; ++x) {
+            const px = Math.round(left) + x;
+            if (px < 0 || px >= pile.width || mask[y][x] !== '.') continue;
+            const index = py * pile.width + px;
+            if (!pile.pixels[index]) changed = true;
+            pile.pixels[index] = 1;
+            pile.heights[px] = Math.max(pile.heights[px], pile.depth - py);
+        }
+    }
+    if (changed) ++pile.revision;
+    return changed;
+}
+
+function syncGeometry(state, geometry, unit, windowDepth, groundDepth) {
+    const old = {};
+    state.piles.forEach(pile => { old[pile.id] = pile; });
+    const surfaces = (geometry.surfaces || []).map(surface => ({
+        id: surface.id, x: surface.x / unit, y: surface.y / unit, width: surface.width / unit
+    }));
+    surfaces.push({id: 'ground:' + geometry.workspace, x: 0, y: state.height,
+                   width: state.width, ground: true});
+    state.piles = surfaces.map(surface => {
+        const depth = surface.ground ? groundDepth : windowDepth;
+        let pile = old[surface.id];
+        if (!pile || pile.width !== Math.round(surface.width) || pile.depth !== depth) {
+            pile = makePile(surface, depth);
+            if (surface.ground && depth > 0) {
+                // Xsnow paints a sparse eight-pixel base at startup.
+                for (let y = 0; y < Math.min(depth, 8); ++y)
+                    for (let i = 0; i < state.flakes.length; ++i)
+                        stamp(pile, randomInt(7), randomInt(pile.width), depth - y);
+            }
+        }
+        pile.x = Math.round(surface.x);
+        pile.y = Math.round(surface.y);
+        return pile;
+    }).filter(pile => pile.depth > 0);
+    state.windows = (geometry.windows || []).map(rect => ({
+        x: rect.x / unit, y: rect.y / unit, width: rect.width / unit, height: rect.height / unit
+    }));
+    state.dirty = true;
+}
+
+function blocked(state, x, y) {
+    return state.windows.some(rect => x >= rect.x && x < rect.x + rect.width
+                             && y >= rect.y && y < rect.y + rect.height);
+}
+
+function land(state, flake, nextX, nextY) {
+    const mask = Flakes.masks[flake.type];
+    const center = nextX + Math.floor(mask[0].length / 2);
+    const oldBottom = flake.y + mask.length;
+    const newBottom = nextY + mask.length;
+    let hit = null;
+    let hitY = Infinity;
+    for (const pile of state.piles) {
+        const column = Math.floor(center - pile.x);
+        if (column < 0 || column >= pile.width) continue;
+        const top = pile.y - pile.heights[column];
+        if (oldBottom > top + 2 || newBottom < top || top >= hitY) continue;
+        if (blocked(state, center, top - 1)) continue;
+        hit = pile;
+        hitY = top;
+    }
+    if (!hit) return false;
+    // Keep the actual flake silhouette in the bank instead of drawing a smooth
+    // curve. Let it sink two pixels, like Xsnow's two-pixel catch-region growth.
+    const top = hitY - mask.length + 2 - (hit.y - hit.depth);
+    state.dirty = stamp(hit, flake.type, nextX - hit.x, top) || state.dirty;
+    return true;
+}
+
+function tick(state, windEnabled) {
+    if (!windEnabled) {
+        state.wind = 0;
+        state.windClock = 600;
+    } else if (--state.windClock <= 0) {
+        if (state.wind === 0) {
+            state.wind = 2;
+            state.direction = Math.random() > 0.5 ? 1 : -1;
+            state.windClock = 20 * (randomInt(5) + 1);
+        } else if (state.wind === 2) {
+            state.wind = 1;
+            state.windClock = 20 * (randomInt(3) + 1);
+        } else {
+            state.wind = 0;
+            state.windClock = 600;
+        }
+    }
+    for (const flake of state.flakes) {
+        if (state.wind) {
+            const change = state.wind === 2 ? randomInt(20) : randomInt(4) - 1;
+            flake.dx = clamp((Math.abs(flake.dx) + change) * state.direction, -50, 50);
+        }
+        const x = flake.x + flake.dx;
+        const y = flake.y + flake.dy;
+        if (y >= state.height || x < -8 || x > state.width || land(state, flake, x, y)) {
+            spawn(state, flake);
+            continue;
+        }
+        flake.x = x;
+        flake.y = y;
+        flake.dx += randomInt(3) * (Math.random() > 0.5 ? 1 : -1);
+        if (!state.wind) flake.dx = clamp(flake.dx, -2, 2);
+    }
+}
+
+function clear(state) {
+    state.piles.forEach(pile => { pile.pixels.fill(0); pile.heights.fill(0); ++pile.revision; });
+    state.dirty = true;
+}

@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 1,
+  "id": "io.weirdware.omasnow",
+  "name": "Omasnow",
+  "version": "0.1.0",
+  "author": "Erik Bourget",
+  "license": "MIT",
+  "description": "Xsnow's vintage pixel snow, drifting and collecting on Hyprland windows.",
+  "kinds": ["service", "bar-widget"],
+  "entryPoints": {"service": "Snow.qml", "barWidget": "BarWidget.qml"},
+  "barWidget": {
+    "displayName": "Omasnow",
+    "description": "Toggle desktop snow. Bright when on, dim when off.",
+    "category": "Desktop",
+    "allowMultiple": false,
+    "defaultSection": "right"
+  }
+}
