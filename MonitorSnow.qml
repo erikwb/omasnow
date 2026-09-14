@@ -12,8 +12,6 @@ Item {
     property var geometry: null
     property var engine: null
     property var piles: []
-    readonly property var emptyPile: ({id: "", x: 0, y: 0, width: 0, depth: 0,
-                                      ground: false, revision: 0, pixels: []})
     readonly property var emptyFlake: ({type: 0, x: -100, y: -100})
     property int frame: 0
     property int pileFrame: 0
@@ -43,6 +41,8 @@ Item {
 
     function statistics() {
         return {running: running, flakes: engine ? engine.flakes.length : 0,
+                blownFlakes: engine ? engine.blown.filter(flake => flake !== null).length : 0,
+                wind: engine ? engine.wind : 0,
                 banks: piles.length, frames: frame, unit: unit,
                 meanFallSpeed: engine && engine.flakes.length
                     ? engine.flakes.reduce((sum, flake) => sum + flake.dy, 0) * 20 / engine.flakes.length : 0,
@@ -60,7 +60,7 @@ Item {
     Connections {
         target: root.controller
         function onClearSnow() {
-            if (root.engine) { Engine.clear(root.engine); ++root.pileFrame }
+            if (root.engine) { Engine.clear(root.engine); ++root.pileFrame; ++root.frame }
         }
     }
 
@@ -87,19 +87,24 @@ Item {
         anchors { top: true; bottom: true; left: true; right: true }
         exclusionMode: ExclusionMode.Ignore
         WlrLayershell.namespace: "omasnow-falling"
+        // Keep every snow pixel below application windows. The compositor
+        // handles occlusion during moves and animations without IPC latency.
         WlrLayershell.layer: WlrLayer.Bottom
         WlrLayershell.keyboardFocus: WlrKeyboardFocus.None
         onWidthChanged: root.rebuild()
         onHeightChanged: root.rebuild()
 
         Repeater {
-            model: root.engine ? root.count : 0
+            model: root.engine ? root.count + root.engine.blown.length : 0
             Image {
                 required property int index
                 readonly property var flake: {
                     root.frame
-                    return root.engine ? (root.engine.flakes[index] || root.emptyFlake) : root.emptyFlake
+                    if (!root.engine) return root.emptyFlake
+                    return (index < root.count ? root.engine.flakes[index]
+                                               : root.engine.blown[index - root.count]) || root.emptyFlake
                 }
+                visible: flake !== root.emptyFlake
                 readonly property int flakeType: { root.frame; return flake.type }
                 x: { root.frame; return flake.x * root.unit }
                 y: { root.frame; return flake.y * root.unit }
@@ -112,44 +117,14 @@ Item {
             }
         }
 
-        Repeater {
-            model: root.piles.length
-            SnowBank {
-                required property int index
-                pile: root.piles[index] || root.emptyPile
-                visible: !!pile && pile.width > 0 && pile.ground
-                unit: root.unit
-                geometryRevision: root.geometryRevision
-                revision: { root.pileFrame; return pile ? pile.revision : 0 }
-            }
-        }
-    }
-
-    PanelWindow {
-        screen: root.screen
-        visible: root.running
-        color: "transparent"
-        mask: Region {}
-        anchors { top: true; bottom: true; left: true; right: true }
-        exclusionMode: ExclusionMode.Ignore
-        WlrLayershell.namespace: "omasnow-settled"
-        WlrLayershell.layer: WlrLayer.Top
-        WlrLayershell.keyboardFocus: WlrKeyboardFocus.None
-
-        Repeater {
-            model: root.piles.length
-            SnowBank {
-                required property int index
-                pile: root.piles[index] || root.emptyPile
-                visible: !!pile && pile.width > 0 && !pile.ground
-                unit: root.unit
-                geometryRevision: root.geometryRevision
-                revision: { root.pileFrame; return pile ? pile.revision : 0 }
-                windows: { root.geometryRevision; return root.engine ? root.engine.windows : [] }
-                reserved: root.geometry ? root.geometry.reserved : []
-                monitorWidth: back.width
-                monitorHeight: back.height
-            }
+        SnowBanks {
+            piles: root.piles
+            unit: root.unit
+            geometryRevision: root.geometryRevision
+            revision: root.pileFrame
+            reserved: root.geometry ? root.geometry.reserved : []
+            monitorWidth: back.width
+            monitorHeight: back.height
         }
     }
 }

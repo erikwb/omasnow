@@ -85,6 +85,109 @@ test('snow stamps preserve the bitmap holes and stay within the depth limit', ()
     assert.ok(p.heights.every(h => h <= 15));
 });
 
+function fillBanks(s) {
+    for (const pile of s.piles) {
+        pile.pixels.fill(1);
+        pile.heights.fill(pile.depth);
+    }
+}
+
+function pixels(pile) { return pile.pixels.reduce((sum, pixel) => sum + pixel, 0); }
+
+test('wind lifts actual bank snow and keeps its collision heights accurate', () => {
+    const s = state(), pile = s.piles[0];
+    fillBanks(s);
+    s.wind = 2;
+    const before = pixels(pile), revision = pile.revision;
+    s.dirty = false;
+    assert.equal(engine.lift(s, pile, 50, 0), true);
+    assert.ok(pixels(pile) < before);
+    assert.equal(pile.revision, revision + 1);
+    assert.equal(s.dirty, true);
+    const flake = s.blown.find(Boolean);
+    assert.ok(flake.dy < 0 && flake.dx > 0);
+    assert.ok(flake.y < pile.y - pile.depth);
+    for (let x = 0; x < pile.width; ++x) {
+        let top = 0;
+        while (top < pile.depth && !pile.pixels[top * pile.width + x]) ++top;
+        assert.equal(pile.heights[x], pile.depth - top);
+    }
+});
+
+test('empty, covered, calm, or capacity-limited banks never lose snow to blow-off', () => {
+    const s = state(), pile = s.piles[0];
+    s.wind = 2;
+    assert.equal(engine.lift(s, pile, 50, 0), false);
+    fillBanks(s);
+    const before = pixels(pile), revision = pile.revision;
+    s.windows = [{x: 0, y: 0, width: 800, height: 600}];
+    assert.equal(engine.lift(s, pile, 50, 0), false);
+    s.windows = [];
+    s.wind = 0;
+    assert.equal(engine.lift(s, pile, 50, 0), false);
+    s.wind = 2;
+    s.blown.fill({type: 0, x: 10, y: 10, dx: 0, dy: 0, life: 600});
+    assert.equal(engine.lift(s, pile, 50, 0), false);
+    assert.equal(pixels(pile), before);
+    assert.equal(pile.revision, revision);
+});
+
+test('a gust erodes banks while preserving the regular snowfall pool', () => {
+    const s = state();
+    fillBanks(s);
+    s.wind = 2;
+    s.windClock = 100;
+    const regular = s.flakes.slice(), speeds = Array.from(s.flakes, flake => flake.dy);
+    const before = s.piles.reduce((sum, pile) => sum + pixels(pile), 0);
+    engine.tick(s, true);
+    assert.equal(s.blown.filter(Boolean).length, 4);
+    assert.ok(s.piles.reduce((sum, pile) => sum + pixels(pile), 0) < before);
+    assert.deepEqual(s.flakes, regular);
+    assert.deepEqual(Array.from(s.flakes, flake => flake.dy), speeds);
+});
+
+test('blown flakes rise, fall, and settle even after wind is disabled', () => {
+    const s = state(), pile = s.piles[0];
+    // Leave room for a returning flake; a full bank correctly clips deposits.
+    pile.pixels.fill(1, pile.width * (pile.depth - 5));
+    pile.heights.fill(5);
+    s.wind = 2;
+    engine.lift(s, pile, 50, 0);
+    const flake = s.blown.find(Boolean), startY = flake.y;
+    s.flakes = [];
+    engine.tick(s, false);
+    assert.ok(flake.y < startY);
+    assert.equal(s.wind, 0);
+    const eroded = pixels(pile);
+    for (let i = 0; i < 600 && s.blown.some(Boolean); ++i) engine.tick(s, false);
+    assert.ok(s.blown.every(flake => flake === null));
+    assert.ok(pixels(pile) > eroded, 'lifted snow settles back onto the bank');
+});
+
+test('blown flakes leave the screen or expire without replacing regular flakes', () => {
+    const s = state();
+    s.blown[0] = {type: 0, x: 10, y: 600, dx: 0, dy: 2, life: 600};
+    s.blown[1] = {type: 0, x: 10, y: 10, dx: 0, dy: 0, life: 1};
+    engine.updateBlown(s);
+    assert.ok(s.blown.every(flake => flake === null));
+    assert.equal(s.flakes.length, 100);
+});
+
+test('clear and workspace changes discard airborne bank snow', () => {
+    const s = state();
+    fillBanks(s);
+    s.wind = 2;
+    engine.lift(s, s.piles[0], 50, 0);
+    engine.syncGeometry(s, {workspace: 2, surfaces: []}, 1, 15, 50);
+    assert.ok(s.blown.every(flake => flake === null));
+    fillBanks(s);
+    engine.lift(s, s.piles[0], 50, 0);
+    assert.ok(s.blown.some(Boolean));
+    engine.clear(s);
+    assert.ok(s.blown.every(flake => flake === null));
+    assert.ok(s.piles.every(pile => pixels(pile) === 0));
+});
+
 for (const wind of [false, true]) test(`ten minutes keeps snowfall steady with wind ${wind ? 'on' : 'off'}`, () => {
     const s = state();
     const initialSpeeds = Array.from(s.flakes, flake => flake.dy);
@@ -96,6 +199,11 @@ for (const wind of [false, true]) test(`ten minutes keeps snowfall steady with w
         assert.ok(Math.abs(flake.dx) <= 52);
     }
     assert.ok(s.piles[0].heights.every(h => h <= 15));
+    for (const flake of s.blown.filter(Boolean)) {
+        assert.ok(Number.isFinite(flake.x) && Number.isFinite(flake.y));
+        assert.ok(flake.life > 0 && flake.life <= 600);
+    }
     engine.clear(s);
     assert.ok(s.piles.every(p => p.pixels.every(n => n === 0)));
+    assert.ok(s.blown.every(flake => flake === null));
 });

@@ -67,18 +67,18 @@ omarchy-shell omasnow configure '{"pixelSize":2}'
 | Setting | Default | Meaning |
 | --- | --- | --- |
 | `flakes` | `100` | Flakes per monitor; 0–2000 |
-| `wind` | `true` | Periodic gusts and sideways drift |
+| `wind` | `true` | Periodic gusts, sideways drift, and snow blown off banks |
 | `windowDepth` | `15` | Maximum window snow depth in snow pixels; 0–150 |
 | `groundDepth` | `50` | Maximum screen-bottom depth; 0–250 |
 | `pixelSize` | `1` | Physical pixels per bitmap pixel; integer 1–4 |
 | `hideOnFullscreen` | `true` | Pause and hide snow on a fullscreen monitor |
 
 Set a depth to zero to disable that accumulation. `clear` removes the current
-banks. `pixelSize: 1` preserves the original bitmap size even on HiDPI displays;
-use `2` for an exact integer enlargement. Most snow is naturally hidden when
+banks and their airborne fragments. `pixelSize: 1` preserves the original bitmap
+size even on HiDPI displays; use `2` for an exact integer enlargement. Most snow is naturally hidden when
 tiled windows cover the desktop, just as with classic Xsnow.
 
-`flakes` limits simultaneous falling flakes, not the total snowfall. Flakes
+`flakes` sets the regular falling-flake count, not the total snowfall. Flakes
 respawn immediately after landing or leaving the screen, even when the banks
 have reached their depth limit. Each keeps its falling speed across respawns
 so the snowfall does not gradually slow down. Flakes continue travelling
@@ -87,8 +87,12 @@ behind windows, including translucent ones. The `status` command reports
 
 The default bank depths follow classic [Xsnow 1.42](https://sources.debian.org/src/xsnow/1%3A1.42-6/): 15 pixels on windows and
 50 at the screen bottom. Omasnow caps its bitmap banks at those depths and
-keeps replacing landed flakes after a bank fills. Banks do not melt or blow
-away; wind affects falling flakes only. Its recycling is an adaptation:
+keeps replacing landed flakes after a bank fills. Gusts peel snow off exposed
+window and ground banks, lifting flakes upward before they fall and settle again.
+These use a separate pool of up to 128 extra flakes per monitor, preserving the
+regular snowfall. `status` reports their count as `blownFlakes`. Setting `wind`
+to `false` stops new blow-off; airborne flakes finish falling. Banks do not melt.
+Its recycling is an adaptation:
 classic Xsnow leaves an imprint while the particle continues falling, whereas
 Omasnow respawns it on landing and preserves its falling speed.
 
@@ -111,20 +115,24 @@ moves and resizes. It emits JSON only when geometry changes, handles reconnects,
 and never enters the animation loop. Window titles and application contents
 are not forwarded or stored.
 
-Each monitor has a bottom-layer surface for falling flakes and ground snow,
-and a top-layer surface for snow resting on windows. Both use an empty
+Each monitor has one bottom-layer surface for falling flakes and all snowbanks.
+It uses an empty
 Quickshell [input region](https://quickshell.org/docs/v0.3.0/types/Quickshell/QsWindow/)
-and take no keyboard focus. The compositor handles occlusion of falling snow;
-window banks clip out all window interiors and reserved bar space. Seven cached
+and takes no keyboard focus. The compositor keeps all snow behind application
+windows, including floating windows during moves and animations, without waiting
+for geometry updates. Window banks clip out reserved bar space. Seven cached
 textures render the flakes. Only narrow, changed snow banks repaint their
-Canvas textures. Snow stops rendering on sleeping and fullscreen monitors.
+Canvas textures. Each bank retains its canvas when other windows enter or leave
+the monitor, avoiding blank frames from recreating unrelated banks. Snow stops
+rendering on sleeping and fullscreen monitors.
 
 Snow follows moved windows. Resizing a bank, switching away from a workspace,
 or closing a window discards its old bank; it cannot leave snow suspended in
 the old location. Monitor coordinates, rotation, scale, pinned windows, and
 special workspaces are handled by the geometry bridge. Hyprland reports target
 geometry during some compositor animations, so banks can briefly lead animated
-windows. Window borders and arbitrary layer-shell panels are not reported as
+windows; polling can also make them trail a drag. Occlusion by windows remains
+immediate. Window borders and arbitrary layer-shell panels are not reported as
 client geometry; snow sits at the client top, with reserved bar space excluded.
 
 ## Development

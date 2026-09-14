@@ -27,6 +27,7 @@ function spawn(state, flake) {
 
 function create(width, height, count) {
     const state = {width: width, height: height, flakes: [], piles: [], windows: [],
+                   blown: new Array(128).fill(null),
                    wind: 0, windClock: 600, direction: 1, dirty: true};
     for (let i = 0; i < count; ++i) state.flakes.push(spawn(state, {}));
     return state;
@@ -59,6 +60,8 @@ function stamp(pile, type, left, top) {
 }
 
 function syncGeometry(state, geometry, unit, windowDepth, groundDepth) {
+    if (state.workspace !== geometry.workspace) state.blown.fill(null);
+    state.workspace = geometry.workspace;
     const old = {};
     state.piles.forEach(pile => { old[pile.id] = pile; });
     const surfaces = (geometry.surfaces || []).map(surface => ({
@@ -117,6 +120,62 @@ function land(state, flake, nextX, nextY) {
     return true;
 }
 
+function lift(state, pile, column, type) {
+    const slot = state.blown.indexOf(null);
+    if (slot < 0 || !state.wind || !pile.heights[column]) return false;
+    const mask = Flakes.masks[type];
+    const crest = pile.y - pile.heights[column];
+    if (blocked(state, pile.x + column, crest - 1)) return false;
+    const left = Math.max(0, column - Math.floor(mask[0].length / 2));
+    let removed = false;
+    // Peel the exposed skin, then recompute only the affected columns. Never
+    // erase a covered bank or remove snow when the extra particle pool is full.
+    for (let x = left; x < Math.min(pile.width, left + mask[0].length); ++x) {
+        let row = pile.depth - pile.heights[x];
+        if (row === pile.depth || blocked(state, pile.x + x, pile.y - pile.heights[x] - 1)) continue;
+        for (let y = row; y < Math.min(pile.depth, row + 2); ++y) {
+            const index = y * pile.width + x;
+            if (pile.pixels[index]) { pile.pixels[index] = 0; removed = true; }
+        }
+        while (row < pile.depth && !pile.pixels[row * pile.width + x]) ++row;
+        pile.heights[x] = pile.depth - row;
+    }
+    if (!removed) return false;
+    state.blown[slot] = {type: type, x: pile.x + left, y: crest - mask.length,
+                         dx: state.direction * (3 + randomInt(6)), dy: -(2 + randomInt(4)), life: 600};
+    ++pile.revision;
+    state.dirty = true;
+    return true;
+}
+
+function updateBlown(state) {
+    for (let i = 0; i < state.blown.length; ++i) {
+        const flake = state.blown[i];
+        if (!flake) continue;
+        const target = state.wind ? state.direction * (state.wind === 2 ? 12 : 6) : 0;
+        flake.dx += clamp(target - flake.dx, -0.5, 0.5);
+        flake.dy = Math.min(11, flake.dy + 0.35);
+        const x = flake.x + flake.dx, y = flake.y + flake.dy;
+        if (--flake.life <= 0 || y >= state.height || x < -8 || x > state.width
+            || (flake.dy > 0 && land(state, flake, x, y))) {
+            state.blown[i] = null;
+        } else {
+            flake.x = x;
+            flake.y = y;
+        }
+    }
+}
+
+function blowSnow(state) {
+    if (!state.wind || !state.piles.length) return;
+    // Fixed work per frame, independent of bank width and normal flake count.
+    for (let i = 0; i < (state.wind === 2 ? 4 : 1); ++i) {
+        if (state.blown.indexOf(null) < 0) break;
+        const pile = state.piles[randomInt(state.piles.length)];
+        lift(state, pile, randomInt(pile.width), randomInt(7));
+    }
+}
+
 function tick(state, windEnabled) {
     if (!windEnabled) {
         state.wind = 0;
@@ -150,9 +209,12 @@ function tick(state, windEnabled) {
         flake.dx += randomInt(3) * (Math.random() > 0.5 ? 1 : -1);
         if (!state.wind) flake.dx = clamp(flake.dx, -2, 2);
     }
+    updateBlown(state);
+    blowSnow(state);
 }
 
 function clear(state) {
     state.piles.forEach(pile => { pile.pixels.fill(0); pile.heights.fill(0); ++pile.revision; });
+    state.blown.fill(null);
     state.dirty = true;
 }

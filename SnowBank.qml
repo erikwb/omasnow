@@ -8,7 +8,6 @@ Canvas {
     required property real unit
     property int revision: 0
     property int geometryRevision: 0
-    property var windows: []
     property var reserved: []
     property real monitorWidth: 0
     property real monitorHeight: 0
@@ -22,7 +21,6 @@ Canvas {
     antialiasing: false
     onRevisionChanged: requestPaint()
     onGeometryRevisionChanged: requestPaint()
-    onWindowsChanged: requestPaint()
     onReservedChanged: requestPaint()
     onPileChanged: requestPaint()
     onAvailableChanged: if (available) requestPaint()
@@ -43,11 +41,8 @@ Canvas {
                 }
             }
         }
-        // Remove pixels covered by another window or by the bar. All window
-        // interiors are excluded, matching Xsnow's root-window clipping.
-        for (const rect of windows)
-            ctx.clearRect(Math.floor(rect.x - pile.x), Math.floor(rect.y - pile.y + pile.depth),
-                          Math.ceil(rect.width), Math.ceil(rect.height))
+        // Application windows occlude this bottom-layer surface in the
+        // compositor. Only the reserved bar space needs a manual cutout.
         if (reserved.length === 4) {
             const mw = monitorWidth / unit, mh = monitorHeight / unit
             ctx.clearRect(-pile.x, -pile.y + pile.depth, reserved[0] / unit, mh)
