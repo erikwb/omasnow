@@ -19,21 +19,36 @@ Canvas {
     transformOrigin: Item.TopLeft
     smooth: false
     antialiasing: false
-    onRevisionChanged: requestPaint()
+    function repaintDirty() {
+        if (!pile || pile.dirtyLeft >= pile.dirtyRight || pile.dirtyTop >= pile.dirtyBottom) return
+        const area = Qt.rect(pile.dirtyLeft, pile.dirtyTop,
+                             pile.dirtyRight - pile.dirtyLeft, pile.dirtyBottom - pile.dirtyTop)
+        pile.dirtyLeft = pile.width
+        pile.dirtyTop = pile.depth
+        pile.dirtyRight = 0
+        pile.dirtyBottom = 0
+        markDirty(area)
+    }
+
+    onRevisionChanged: repaintDirty()
     onGeometryRevisionChanged: requestPaint()
     onReservedChanged: requestPaint()
     onPileChanged: requestPaint()
     onAvailableChanged: if (available) requestPaint()
-    onPaint: {
+    onPaint: region => {
         if (!pile || pile.width <= 0 || pile.depth <= 0) return
         const ctx = getContext("2d")
-        ctx.reset()
-        ctx.clearRect(0, 0, pile.width, pile.depth)
+        const area = region || Qt.rect(0, 0, pile.width, pile.depth)
+        const left = Math.max(0, Math.floor(area.x))
+        const top = Math.max(0, Math.floor(area.y))
+        const right = Math.min(pile.width, Math.ceil(area.x + area.width))
+        const bottom = Math.min(pile.depth, Math.ceil(area.y + area.height))
+        ctx.clearRect(left, top, right - left, bottom - top)
         ctx.fillStyle = "#fffafa"
-        for (let row = 0; row < pile.depth; ++row) {
+        for (let row = top; row < bottom; ++row) {
             let start = -1
-            for (let column = 0; column <= pile.width; ++column) {
-                const filled = column < pile.width && pile.pixels[row * pile.width + column]
+            for (let column = left; column <= right; ++column) {
+                const filled = column < right && pile.pixels[row * pile.width + column]
                 if (filled && start < 0) start = column
                 if (!filled && start >= 0) {
                     ctx.fillRect(start, row, column - start, 1)
@@ -50,5 +65,9 @@ Canvas {
             ctx.clearRect(mw - reserved[2] / unit - pile.x, -pile.y + pile.depth, reserved[2] / unit, mh)
             ctx.clearRect(-pile.x, mh - reserved[3] / unit - pile.y + pile.depth, mw, reserved[3] / unit)
         }
+        pile.dirtyLeft = pile.width
+        pile.dirtyTop = pile.depth
+        pile.dirtyRight = 0
+        pile.dirtyBottom = 0
     }
 }

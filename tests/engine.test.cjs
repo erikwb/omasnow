@@ -25,7 +25,23 @@ test('flakes retain native Xsnow dimensions and cadence speeds', () => {
         assert.ok(flake.y < 60);
     }
 });
+test('sixty fps steps preserve the 50 ms simulation speed', () => {
+    const s = state();
+    const flake = s.flakes[0];
+    Object.assign(flake, {type: 0, x: 150, y: 300, dx: 0, dy: 6});
+    for (let i = 0; i < 3; ++i) engine.tick(s, false, 1 / 3);
+    assert.equal(flake.y, 306);
+});
 
+test('a landing marks only its changed bank region for repaint', () => {
+    const pile = engine.makePile({id: 'ground', x: 0, y: 50, width: 800, ground: true}, 50);
+    Object.assign(pile, {dirtyLeft: pile.width, dirtyTop: pile.depth, dirtyRight: 0, dirtyBottom: 0});
+    engine.stamp(pile, 0, 400, 47);
+    assert.equal(pile.dirtyLeft, 400);
+    assert.equal(pile.dirtyTop, 47);
+    assert.ok(pile.dirtyRight - pile.dirtyLeft <= masks.masks[0][0].length);
+    assert.ok(pile.dirtyBottom - pile.dirtyTop <= masks.masks[0].length);
+});
 test('fast flakes settle on the first crossed window, not the ground', () => {
     const s = state();
     assert.equal(engine.land(s, {type: 0, x: 150, y: 190}, 150, 210), true);

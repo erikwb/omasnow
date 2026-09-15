@@ -86,9 +86,9 @@ Item {
                 if (!values || typeof values !== "object" || Array.isArray(values)) return "expected a JSON object"
                 const next = Object.assign({}, root.settings)
                 let changed = false
-                const ranges = {flakes: [0, 2000], windowDepth: [0, 150], groundDepth: [0, 250], pixelSize: [1, 4]}
+                const ranges = {flakes: [0, 2000], windowDepth: [0, 150], groundDepth: [0, 250], pixelSize: [1, 4], fps: [20, 60]}
                 for (const key of Object.keys(values)) {
-                    if (["flakes", "wind", "windowDepth", "groundDepth", "hideOnFullscreen", "pixelSize"].indexOf(key) < 0)
+                    if (["flakes", "wind", "windowDepth", "groundDepth", "hideOnFullscreen", "pixelSize", "fps"].indexOf(key) < 0)
                         return "unknown setting: " + key
                     if (ranges[key]) {
                         const value = values[key], range = ranges[key]

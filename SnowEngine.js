@@ -2,9 +2,9 @@
 
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Erik Bourget
-// Vintage Xsnow movement parameters and bitmap snow deposits.
-// Simulation runs in physical pixels at the original 50 ms cadence. The host
-// translates to logical Wayland coordinates only when displaying the result.
+// Vintage Xsnow movement parameters and bitmap snow deposits. Simulation time
+// is measured in 50 ms steps, so render cadence can change without affecting
+// falling speed; the host converts to logical Wayland coordinates for display.
 function randomInt(n) { return Math.floor(Math.random() * Math.max(1, n)); }
 function clamp(n, low, high) { return Math.max(low, Math.min(high, n)); }
 
@@ -37,7 +37,15 @@ function makePile(surface, depth) {
     const width = Math.max(1, Math.round(surface.width));
     return {id: surface.id, x: Math.round(surface.x), y: Math.round(surface.y),
             width: width, depth: depth, pixels: new Uint8Array(width * depth),
-            heights: new Uint16Array(width), ground: surface.ground === true, revision: 0};
+            heights: new Uint16Array(width), ground: surface.ground === true, revision: 0,
+            dirtyLeft: 0, dirtyTop: 0, dirtyRight: width, dirtyBottom: depth};
+}
+
+function markDirty(pile, left, top, right, bottom) {
+    pile.dirtyLeft = Math.min(pile.dirtyLeft, Math.max(0, left));
+    pile.dirtyTop = Math.min(pile.dirtyTop, Math.max(0, top));
+    pile.dirtyRight = Math.max(pile.dirtyRight, Math.min(pile.width, right));
+    pile.dirtyBottom = Math.max(pile.dirtyBottom, Math.min(pile.depth, bottom));
 }
 
 function stamp(pile, type, left, top) {
@@ -55,7 +63,10 @@ function stamp(pile, type, left, top) {
             pile.heights[px] = Math.max(pile.heights[px], pile.depth - py);
         }
     }
-    if (changed) ++pile.revision;
+    if (changed) {
+        markDirty(pile, left, top, left + mask[0].length, top + mask.length);
+        ++pile.revision;
+    }
     return changed;
 }
 
@@ -141,6 +152,8 @@ function lift(state, pile, column, type) {
         pile.heights[x] = pile.depth - row;
     }
     if (!removed) return false;
+    markDirty(pile, left, pile.depth - pile.heights[column] - 2,
+              left + mask[0].length, pile.depth);
     state.blown[slot] = {type: type, x: pile.x + left, y: crest - mask.length,
                          dx: state.direction * (3 + randomInt(6)), dy: -(2 + randomInt(4)), life: 600};
     ++pile.revision;
@@ -148,15 +161,16 @@ function lift(state, pile, column, type) {
     return true;
 }
 
-function updateBlown(state) {
+function updateBlown(state, step) {
+    const elapsed = step === undefined ? 1 : step;
     for (let i = 0; i < state.blown.length; ++i) {
         const flake = state.blown[i];
         if (!flake) continue;
         const target = state.wind ? state.direction * (state.wind === 2 ? 12 : 6) : 0;
-        flake.dx += clamp(target - flake.dx, -0.5, 0.5);
-        flake.dy = Math.min(11, flake.dy + 0.35);
-        const x = flake.x + flake.dx, y = flake.y + flake.dy;
-        if (--flake.life <= 0 || y >= state.height || x < -8 || x > state.width
+        flake.dx += clamp(target - flake.dx, -0.5 * elapsed, 0.5 * elapsed);
+        flake.dy = Math.min(11, flake.dy + 0.35 * elapsed);
+        const x = flake.x + flake.dx * elapsed, y = flake.y + flake.dy * elapsed;
+        if ((flake.life -= elapsed) <= 0 || y >= state.height || x < -8 || x > state.width
             || (flake.dy > 0 && land(state, flake, x, y))) {
             state.blown[i] = null;
         } else {
@@ -166,8 +180,8 @@ function updateBlown(state) {
     }
 }
 
-function blowSnow(state) {
-    if (!state.wind || !state.piles.length) return;
+function blowSnow(state, elapsed) {
+    if (!state.wind || !state.piles.length || Math.random() >= elapsed) return;
     // Fixed work per frame, independent of bank width and normal flake count.
     for (let i = 0; i < (state.wind === 2 ? 4 : 1); ++i) {
         if (state.blown.indexOf(null) < 0) break;
@@ -176,11 +190,13 @@ function blowSnow(state) {
     }
 }
 
-function tick(state, windEnabled) {
+function tick(state, windEnabled, step) {
+    const elapsed = clamp(step === undefined ? 1 : step, 0, 2);
+    if (elapsed === 0) return;
     if (!windEnabled) {
         state.wind = 0;
         state.windClock = 600;
-    } else if (--state.windClock <= 0) {
+    } else if ((state.windClock -= elapsed) <= 0) {
         if (state.wind === 0) {
             state.wind = 2;
             state.direction = Math.random() > 0.5 ? 1 : -1;
@@ -194,27 +210,32 @@ function tick(state, windEnabled) {
         }
     }
     for (const flake of state.flakes) {
-        if (state.wind) {
+        if (state.wind && Math.random() < elapsed) {
             const change = state.wind === 2 ? randomInt(20) : randomInt(4) - 1;
             flake.dx = clamp((Math.abs(flake.dx) + change) * state.direction, -50, 50);
         }
-        const x = flake.x + flake.dx;
-        const y = flake.y + flake.dy;
+        const x = flake.x + flake.dx * elapsed;
+        const y = flake.y + flake.dy * elapsed;
         if (y >= state.height || x < -8 || x > state.width || land(state, flake, x, y)) {
             spawn(state, flake);
             continue;
         }
         flake.x = x;
         flake.y = y;
-        flake.dx += randomInt(3) * (Math.random() > 0.5 ? 1 : -1);
+        if (Math.random() < elapsed) flake.dx += randomInt(3) * (Math.random() > 0.5 ? 1 : -1);
         if (!state.wind) flake.dx = clamp(flake.dx, -2, 2);
     }
-    updateBlown(state);
-    blowSnow(state);
+    updateBlown(state, elapsed);
+    blowSnow(state, elapsed);
 }
 
 function clear(state) {
-    state.piles.forEach(pile => { pile.pixels.fill(0); pile.heights.fill(0); ++pile.revision; });
+    state.piles.forEach(pile => {
+        pile.pixels.fill(0);
+        pile.heights.fill(0);
+        markDirty(pile, 0, 0, pile.width, pile.depth);
+        ++pile.revision;
+    });
     state.blown.fill(null);
     state.dirty = true;
 }

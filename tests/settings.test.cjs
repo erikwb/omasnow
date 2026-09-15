@@ -36,10 +36,11 @@ test('unchanged settings and an empty update succeed without writing', () => {
 
 test('changed settings save once and retain other options', () => {
     const {root, writes, configure} = service();
-    assert.equal(configure('{"flakes":250}'), 'ok');
-    assert.deepEqual(writes, [{id: root.pluginId, settings: {id: root.pluginId, flakes: 250, wind: true}}]);
+    assert.equal(configure('{"flakes":250,"fps":60}'), 'ok');
+    assert.deepEqual(writes, [{id: root.pluginId, settings: {id: root.pluginId, flakes: 250, wind: true, fps: 60}}]);
     assert.equal(root.settings.flakes, 250);
-    assert.equal(configure('{"flakes":250}'), 'ok');
+    assert.equal(root.settings.fps, 60);
+    assert.equal(configure('{"flakes":250,"fps":60}'), 'ok');
     assert.equal(writes.length, 1);
 });
 
@@ -55,7 +56,7 @@ test('no-op detection does not bypass validation or partially apply an invalid u
     const {root, writes, configure} = service();
     const previous = root.settings;
     for (const input of ['null', '[]', '{', '{"flakes":"100"}', '{"flakes":2001}',
-                         '{"wind":1}', '{"flakes":250,"unknown":true}']) {
+                         '{"fps":19}', '{"fps":61}', '{"fps":30.5}', '{"wind":1}', '{"flakes":250,"unknown":true}']) {
         assert.notEqual(configure(input), 'ok', input);
     }
     assert.equal(writes.length, 0);

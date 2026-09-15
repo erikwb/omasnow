@@ -10,12 +10,14 @@ Rectangle {
     color: "#203040"
     property var snow: Engine.makePile({id: "test", x: 0, y: 60, width: 120}, 50)
     property int geometryRevision: 0
+    property int pileFrame: 0
 
     SnowBank {
         id: bank
         pile: scene.snow
         unit: 1
         geometryRevision: scene.geometryRevision
+        revision: scene.pileFrame
     }
 
     SnowBanks { id: banks }
@@ -34,7 +36,7 @@ Rectangle {
 
         function deposit() {
             Engine.stamp(scene.snow, 0, 10, 47)
-            bank.requestPaint()
+            ++scene.pileFrame
             tryComparePixel(10, 47, 250)
         }
 
