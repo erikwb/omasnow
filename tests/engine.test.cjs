@@ -26,6 +26,13 @@ test('flakes retain native Xsnow dimensions and cadence speeds', () => {
     }
 });
 
+test('sixty fps steps preserve the 50 ms simulation speed', () => {
+    const s = state();
+    const flake = s.flakes[0];
+    Object.assign(flake, {type: 0, x: 150, y: 300, dx: 0, dy: 6});
+    for (let i = 0; i < 3; ++i) engine.tick(s, false, 1 / 3);
+    assert.equal(flake.y, 306);
+});
 test('fast flakes settle on the first crossed window, not the ground', () => {
     const s = state();
     assert.equal(engine.land(s, {type: 0, x: 150, y: 190}, 150, 210), true);

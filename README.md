@@ -10,8 +10,9 @@ The seven vintage masks come from [Wsnow 0.92](https://sourceforge.net/projects/
 Willem Vermin's MIT-licensed browser version. Their pixel shapes exactly match
 the vintage Xsnow flakes.
 They render in the classic `snow` color, at native physical-pixel size, with
-nearest-neighbor sampling and the classic 50 ms animation cadence. Deposited
-snow uses those same bitmap masks, including their holes and jagged edges.
+nearest-neighbor sampling and a configurable animation rate that defaults to
+the classic 50 ms cadence. Deposited snow uses those same bitmap masks,
+including their holes and jagged edges.
 This is a Wayland adaptation of vintage snow, not a port of Xsnow's whole
 program: Santa, trees, birds, and modern procedurally generated flakes are
 outside its scope. Random motion and window handling are implemented locally.
@@ -62,12 +63,14 @@ For the installed plugin, settings persist inline in its bar entry in
 
 ```sh
 omarchy-shell omasnow configure '{"flakes":250,"wind":true}'
+omarchy-shell omasnow configure '{"fps":60}'
 omarchy-shell omasnow configure '{"pixelSize":2}'
 ```
 
 | Setting | Default | Meaning |
 | --- | --- | --- |
 | `flakes` | `100` | Flakes per monitor; 0–2000 |
+| `fps` | `20` | Animation refresh rate; integer 20–60 frames per second |
 | `wind` | `true` | Periodic gusts, sideways drift, and snow blown off banks |
 | `windowDepth` | `15` | Maximum window snow depth in snow pixels; 0–150 |
 | `groundDepth` | `50` | Maximum screen-bottom depth; 0–250 |
@@ -75,10 +78,11 @@ omarchy-shell omasnow configure '{"pixelSize":2}'
 | `hideOnFullscreen` | `true` | Pause and hide snow on a fullscreen monitor |
 
 Set a depth to zero to disable that accumulation. `clear` removes the current
-banks and their airborne fragments. `pixelSize: 1` preserves the original bitmap
-size even on HiDPI displays; use `2` for an exact integer enlargement. Most snow
-is naturally hidden when tiled windows cover the desktop, just as with classic
-Xsnow.
+banks and their airborne fragments. `fps` redraws and advances the simulation
+at the chosen rate while retaining the classic falling speed; use `60` for the
+smoothest motion. `pixelSize: 1` preserves the original bitmap size even on
+HiDPI displays; use `2` for an exact integer enlargement. Most snow is naturally
+hidden when tiled windows cover the desktop, just as with classic Xsnow.
 
 `flakes` sets the regular falling-flake count, not the total snowfall. Flakes
 respawn immediately after landing or leaving the screen, even when the banks

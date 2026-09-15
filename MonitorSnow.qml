@@ -20,6 +20,7 @@ Item {
     readonly property int count: Math.round(controller.bounded("flakes", 100, 0, 2000))
     readonly property int windowDepth: Math.round(controller.bounded("windowDepth", 15, 0, 150))
     readonly property int groundDepth: Math.round(controller.bounded("groundDepth", 50, 0, 250))
+    readonly property int fps: Math.round(controller.bounded("fps", 20, 20, 60))
     readonly property bool running: controller.active && geometry !== null && !geometry.asleep
         && !(controller.settings.hideOnFullscreen !== false && geometry.fullscreen)
 
@@ -43,7 +44,7 @@ Item {
         return {running: running, flakes: engine ? engine.flakes.length : 0,
                 blownFlakes: engine ? engine.blown.filter(flake => flake !== null).length : 0,
                 wind: engine ? engine.wind : 0,
-                banks: piles.length, frames: frame, unit: unit,
+                banks: piles.length, frames: frame, unit: unit, targetFps: fps,
                 meanFallSpeed: engine && engine.flakes.length
                     ? engine.flakes.reduce((sum, flake) => sum + flake.dy, 0) * 20 / engine.flakes.length : 0,
                 snowPixels: piles.reduce((sum, pile) => sum + pile.pixels.reduce((a, b) => a + b, 0), 0)}
@@ -65,11 +66,17 @@ Item {
     }
 
     Timer {
-        interval: 50
+        id: animation
+        interval: Math.round(1000 / root.fps)
+        property double previousTick: 0
         running: root.running && root.engine !== null
         repeat: true
+        onRunningChanged: if (running) previousTick = Date.now()
         onTriggered: {
-            Engine.tick(root.engine, root.controller.settings.wind !== false)
+            const now = Date.now()
+            const elapsed = previousTick ? Math.min(2, (now - previousTick) / 50) : 1
+            previousTick = now
+            Engine.tick(root.engine, root.controller.settings.wind !== false, elapsed)
             ++root.frame
             if (root.engine.dirty) {
                 ++root.pileFrame

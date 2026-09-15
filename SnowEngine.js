@@ -2,9 +2,9 @@
 
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Erik Bourget
-// Vintage Xsnow movement parameters and bitmap snow deposits.
-// Simulation runs in physical pixels at the original 50 ms cadence. The host
-// translates to logical Wayland coordinates only when displaying the result.
+// Vintage Xsnow movement parameters and bitmap snow deposits. Simulation time
+// is measured in 50 ms steps, so render cadence can change without affecting
+// falling speed; the host converts to logical Wayland coordinates for display.
 function randomInt(n) { return Math.floor(Math.random() * Math.max(1, n)); }
 function clamp(n, low, high) { return Math.max(low, Math.min(high, n)); }
 
@@ -148,15 +148,16 @@ function lift(state, pile, column, type) {
     return true;
 }
 
-function updateBlown(state) {
+function updateBlown(state, step) {
+    const elapsed = step === undefined ? 1 : step;
     for (let i = 0; i < state.blown.length; ++i) {
         const flake = state.blown[i];
         if (!flake) continue;
         const target = state.wind ? state.direction * (state.wind === 2 ? 12 : 6) : 0;
-        flake.dx += clamp(target - flake.dx, -0.5, 0.5);
-        flake.dy = Math.min(11, flake.dy + 0.35);
-        const x = flake.x + flake.dx, y = flake.y + flake.dy;
-        if (--flake.life <= 0 || y >= state.height || x < -8 || x > state.width
+        flake.dx += clamp(target - flake.dx, -0.5 * elapsed, 0.5 * elapsed);
+        flake.dy = Math.min(11, flake.dy + 0.35 * elapsed);
+        const x = flake.x + flake.dx * elapsed, y = flake.y + flake.dy * elapsed;
+        if ((flake.life -= elapsed) <= 0 || y >= state.height || x < -8 || x > state.width
             || (flake.dy > 0 && land(state, flake, x, y))) {
             state.blown[i] = null;
         } else {
@@ -166,8 +167,8 @@ function updateBlown(state) {
     }
 }
 
-function blowSnow(state) {
-    if (!state.wind || !state.piles.length) return;
+function blowSnow(state, elapsed) {
+    if (!state.wind || !state.piles.length || Math.random() >= elapsed) return;
     // Fixed work per frame, independent of bank width and normal flake count.
     for (let i = 0; i < (state.wind === 2 ? 4 : 1); ++i) {
         if (state.blown.indexOf(null) < 0) break;
@@ -176,11 +177,13 @@ function blowSnow(state) {
     }
 }
 
-function tick(state, windEnabled) {
+function tick(state, windEnabled, step) {
+    const elapsed = clamp(step === undefined ? 1 : step, 0, 2);
+    if (elapsed === 0) return;
     if (!windEnabled) {
         state.wind = 0;
         state.windClock = 600;
-    } else if (--state.windClock <= 0) {
+    } else if ((state.windClock -= elapsed) <= 0) {
         if (state.wind === 0) {
             state.wind = 2;
             state.direction = Math.random() > 0.5 ? 1 : -1;
@@ -194,23 +197,23 @@ function tick(state, windEnabled) {
         }
     }
     for (const flake of state.flakes) {
-        if (state.wind) {
+        if (state.wind && Math.random() < elapsed) {
             const change = state.wind === 2 ? randomInt(20) : randomInt(4) - 1;
             flake.dx = clamp((Math.abs(flake.dx) + change) * state.direction, -50, 50);
         }
-        const x = flake.x + flake.dx;
-        const y = flake.y + flake.dy;
+        const x = flake.x + flake.dx * elapsed;
+        const y = flake.y + flake.dy * elapsed;
         if (y >= state.height || x < -8 || x > state.width || land(state, flake, x, y)) {
             spawn(state, flake);
             continue;
         }
         flake.x = x;
         flake.y = y;
-        flake.dx += randomInt(3) * (Math.random() > 0.5 ? 1 : -1);
+        if (Math.random() < elapsed) flake.dx += randomInt(3) * (Math.random() > 0.5 ? 1 : -1);
         if (!state.wind) flake.dx = clamp(flake.dx, -2, 2);
     }
-    updateBlown(state);
-    blowSnow(state);
+    updateBlown(state, elapsed);
+    blowSnow(state, elapsed);
 }
 
 function clear(state) {
