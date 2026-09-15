@@ -37,7 +37,15 @@ function makePile(surface, depth) {
     const width = Math.max(1, Math.round(surface.width));
     return {id: surface.id, x: Math.round(surface.x), y: Math.round(surface.y),
             width: width, depth: depth, pixels: new Uint8Array(width * depth),
-            heights: new Uint16Array(width), ground: surface.ground === true, revision: 0};
+            heights: new Uint16Array(width), ground: surface.ground === true, revision: 0,
+            dirtyLeft: 0, dirtyTop: 0, dirtyRight: width, dirtyBottom: depth};
+}
+
+function markDirty(pile, left, top, right, bottom) {
+    pile.dirtyLeft = Math.min(pile.dirtyLeft, Math.max(0, left));
+    pile.dirtyTop = Math.min(pile.dirtyTop, Math.max(0, top));
+    pile.dirtyRight = Math.max(pile.dirtyRight, Math.min(pile.width, right));
+    pile.dirtyBottom = Math.max(pile.dirtyBottom, Math.min(pile.depth, bottom));
 }
 
 function stamp(pile, type, left, top) {
@@ -55,7 +63,10 @@ function stamp(pile, type, left, top) {
             pile.heights[px] = Math.max(pile.heights[px], pile.depth - py);
         }
     }
-    if (changed) ++pile.revision;
+    if (changed) {
+        markDirty(pile, left, top, left + mask[0].length, top + mask.length);
+        ++pile.revision;
+    }
     return changed;
 }
 
@@ -141,6 +152,8 @@ function lift(state, pile, column, type) {
         pile.heights[x] = pile.depth - row;
     }
     if (!removed) return false;
+    markDirty(pile, left, pile.depth - pile.heights[column] - 2,
+              left + mask[0].length, pile.depth);
     state.blown[slot] = {type: type, x: pile.x + left, y: crest - mask.length,
                          dx: state.direction * (3 + randomInt(6)), dy: -(2 + randomInt(4)), life: 600};
     ++pile.revision;
@@ -217,7 +230,12 @@ function tick(state, windEnabled, step) {
 }
 
 function clear(state) {
-    state.piles.forEach(pile => { pile.pixels.fill(0); pile.heights.fill(0); ++pile.revision; });
+    state.piles.forEach(pile => {
+        pile.pixels.fill(0);
+        pile.heights.fill(0);
+        markDirty(pile, 0, 0, pile.width, pile.depth);
+        ++pile.revision;
+    });
     state.blown.fill(null);
     state.dirty = true;
 }
